@@ -55,13 +55,18 @@ audio{width:100%;margin-top:10px}
 <div class="file"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
 
 <div class="fx">
-  <div class="fxr"><label class="t"><input type="checkbox" id="trim" checked> Trim silence at both ends</label>
+  <div class="fxr" id="trimbox" hidden><label class="t">Trim the recording</label>
+    <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
+    <div class="ctl" style="display:block" id="tinfo"></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="trim" checked> Auto-remove silence at both ends</label>
     <div class="ctl"><span>Sensitivity</span><input type="range" id="thr" min="-55" max="-20" value="-42"></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="echo"> Echo</label>
     <div class="ctl"><span>Delay</span><input type="range" id="edelay" min="120" max="700" value="330">
-    <span>Repeats</span><input type="range" id="efb" min="10" max="75" value="40"></div></div>
+    <span>Repeats</span><input type="range" id="efb" min="10" max="75" value="40">
+    <span>Amount</span><input type="range" id="emix" min="10" max="100" value="65"></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="rev"> Reverb</label>
-    <div class="ctl"><span>Space</span><select id="room"><option value="0.8">Small room</option><option value="2" selected>Hall</option><option value="4">Cathedral</option></select></div></div>
+    <div class="ctl"><span>Space</span><select id="room"><option value="0.8">Small room</option><option value="2" selected>Hall</option><option value="4">Cathedral</option></select>
+    <span>Amount</span><input type="range" id="revmix" min="0" max="100" value="50"></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="rep"> Repeat the clip</label>
     <div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
@@ -95,7 +100,7 @@ function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clien
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};draw(d);$('prev').disabled=false;touch();msg('Got it. Choose effects, then tap Preview.')}
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();$('prev').disabled=false;msg('Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
 async function startRec(){AC();
@@ -124,7 +129,7 @@ function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.le
 function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
 
-async function render(){let d=raw.data;const sr=raw.sr;
+async function render(){const n=raw.data.length;let d=raw.data.slice(Math.floor(n*$('ts').value/1000),Math.floor(n*$('te').value/1000));const sr=raw.sr;
   if($('trim').checked)d=trim(d,sr,+$('thr').value);
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
@@ -135,10 +140,10 @@ async function render(){let d=raw.data;const sr=raw.sr;
   const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
   const src=oc.createBufferSource();src.buffer=buf;let node=src;
   if(echo){const mix=oc.createGain(),del=oc.createDelay(2),g=oc.createGain(),w=oc.createGain();
-    del.delayTime.value=dl;g.gain.value=fb;w.gain.value=.65;
+    del.delayTime.value=dl;g.gain.value=fb;w.gain.value=+$('emix').value/100;
     src.connect(mix);src.connect(del);del.connect(g);g.connect(del);del.connect(w);w.connect(mix);node=mix}
   const og=oc.createGain();node.connect(og);
-  if(rev){const cv=oc.createConvolver(),w=oc.createGain();cv.buffer=ir(oc,rs,sr);w.gain.value=.55;node.connect(cv);cv.connect(w);w.connect(og)}
+  if(rev){const cv=oc.createConvolver(),w=oc.createGain();cv.buffer=ir(oc,rs,sr);w.gain.value=+$('revmix').value/100*1.2;node.connect(cv);cv.connect(w);w.connect(og)}
   og.connect(oc.destination);src.start();
   const y=(await oc.startRendering()).getChannelData(0).slice();let pk=0;
   for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));if(pk>0)for(let i=0;i<y.length;i++)y[i]*=.9/pk;
@@ -173,6 +178,12 @@ $('share').onclick=async()=>{if(!blob||dirty){msg('Tap Preview first so the late
   msg('The share sheet isn’t available here. Use the player below: its ⋮ menu has Download.')};
 
 function touch(){dirty=true;$('share').disabled=true}
+function updTrim(){if(!raw)return;let a=+$('ts').value,b=+$('te').value;
+  if(document.activeElement===$('ts')){a=Math.min(a,b-10);$('ts').value=a}else{b=Math.max(b,a+10);$('te').value=b}
+  draw(raw.data);const c=$('cv'),g=c.getContext('2d'),w=c.clientWidth,h=c.clientHeight;
+  g.fillStyle='rgba(120,120,120,.6)';g.fillRect(0,0,w*a/1000,h);g.fillRect(w*b/1000,0,w-w*b/1000,h);
+  const du=raw.data.length/raw.sr;$('tinfo').textContent='Keeping '+(du*a/1000).toFixed(1)+'s to '+(du*b/1000).toFixed(1)+'s of '+du.toFixed(1)+'s';touch()}
+$('ts').addEventListener('input',updTrim);$('te').addEventListener('input',updTrim);
 document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
 addEventListener('resize',()=>draw(out?out.data:raw&&raw.data));
 addEventListener('error',e=>msg('Error: '+e.message));
