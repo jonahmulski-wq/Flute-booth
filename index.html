@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Flute Booth</title>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500&family=Figtree:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lamejs/1.2.1/lame.min.js"></script>
+<style>
+:root{--bg:#eef3ef;--panel:#fff;--ink:#16292d;--mute:#52686a;--line:#cfdcd6;--acc:#0f7f74;--rec:#c8452a;--on:#fff;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10262b;--panel:#17333a;--ink:#e4ede6;--mute:#93abab;--line:#2a4a52;--acc:#6fd0c2;--rec:#e0674a;--on:#08201f}}
+:root[data-theme="dark"]{--bg:#10262b;--panel:#17333a;--ink:#e4ede6;--mute:#93abab;--line:#2a4a52;--acc:#6fd0c2;--rec:#e0674a;--on:#08201f}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 Figtree,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:480px;margin:0 auto;padding:20px 18px 40px}
+h1{font:500 30px/1.1 Fraunces,Georgia,serif;margin:8px 0 4px}
+.sub{color:var(--mute);margin:0 0 18px}
+.wave{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px}
+canvas{display:block;width:100%;height:110px}
+.row{display:flex;gap:10px;align-items:center;justify-content:center;margin:16px 0;flex-wrap:wrap}
+button,select{font:inherit;color:inherit}
+.rec{width:76px;height:76px;border-radius:50%;border:4px solid var(--panel);outline:2px solid var(--rec);background:var(--rec);color:#fff;font-weight:600;cursor:pointer}
+.rec.on{border-radius:18px}
+.btn{padding:11px 18px;border-radius:999px;border:1px solid var(--line);background:var(--panel);cursor:pointer;font-weight:600}
+.btn.main{background:var(--acc);color:var(--on);border-color:var(--acc)}
+.btn:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+.time{font-variant-numeric:tabular-nums;color:var(--mute);min-width:3.2em;text-align:center}
+.fx{margin-top:6px}
+.fxr{border-top:1px solid var(--line);padding:12px 0}
+.fxr>label.t{display:flex;align-items:center;gap:10px;font-weight:600}
+.fxr input[type=checkbox]{width:20px;height:20px;accent-color:var(--acc)}
+.ctl{display:grid;grid-template-columns:90px 1fr;gap:6px 10px;align-items:center;margin:8px 0 0 30px;color:var(--mute);font-size:14px}
+.ctl input[type=range]{width:100%;accent-color:var(--acc)}
+select{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px}
+.msg{margin-top:12px;padding:10px 12px;border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;background:var(--panel);color:var(--ink);font-size:14px}
+audio{width:100%;margin-top:10px}
+.file{color:var(--mute);font-size:14px;text-align:center;margin-top:4px}
+.file input{max-width:100%}
+</style>
+</head>
+<body>
+<main>
+<h1>Flute Booth</h1>
+<p class="sub">Record a short clip, add effects, then share it as an MP3.</p>
+
+<div class="wave"><canvas id="cv"></canvas></div>
+<div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
+<div class="row">
+  <span class="time" id="tm">0:00</span>
+  <button class="rec" id="rec" aria-label="Record">Rec</button>
+  <span class="time"></span>
+</div>
+<div class="file"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
+
+<div class="fx">
+  <div class="fxr"><label class="t"><input type="checkbox" id="trim" checked> Trim silence at both ends</label>
+    <div class="ctl"><span>Sensitivity</span><input type="range" id="thr" min="-55" max="-20" value="-42"></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="echo"> Echo</label>
+    <div class="ctl"><span>Delay</span><input type="range" id="edelay" min="120" max="700" value="330">
+    <span>Repeats</span><input type="range" id="efb" min="10" max="75" value="40"></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="rev"> Reverb</label>
+    <div class="ctl"><span>Space</span><select id="room"><option value="0.8">Small room</option><option value="2" selected>Hall</option><option value="4">Cathedral</option></select></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="rep"> Repeat the clip</label>
+    <div class="ctl"><span>Times</span><select id="reps"><option>2</option><option>3</option><option>4</option></select></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
+    <div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
+    <span>Mix</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div>
+</div>
+
+<div class="row">
+  <button class="btn main" id="prev" disabled>Preview</button>
+  <button class="btn" id="stop" disabled>Stop</button>
+  <button class="btn" id="share" disabled>Share MP3</button>
+</div>
+<audio id="player" controls hidden></audio>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let ctx,raw=null,out=null,blob=null,rec=null,stream=null,chunks=[],tick=null,t0=0,playing=null,dirty=true;
+const msg=t=>$('msg').textContent=t;
+function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100})}catch(e){ctx=new (window.AudioContext||window.webkitAudioContext)()}}
+  if(ctx.state==='suspended')ctx.resume();return ctx}
+const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+
+function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*k;c.height=h*k;
+  const g=c.getContext('2d');g.scale(k,k);g.clearRect(0,0,w,h);
+  g.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--acc');
+  if(!d){g.globalAlpha=.4;g.fillRect(0,h/2-.5,w,1);return}
+  const step=Math.max(1,Math.floor(d.length/w));
+  for(let x=0;x<w;x++){let m=0;for(let i=x*step;i<Math.min(d.length,(x+1)*step);i++){const a=Math.abs(d[i]);if(a>m)m=a}
+    const bh=Math.max(1,m*h*.95);g.fillRect(x,(h-bh)/2,1,bh)}}
+
+async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
+  for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
+  raw={data:d,sr:b.sampleRate};draw(d);$('prev').disabled=false;touch();msg('Got it. Choose effects, then tap Preview.')}
+  catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
+
+async function startRec(){AC();
+  if(!navigator.mediaDevices||!window.MediaRecorder){msg('Recording isn’t supported in this view. Use “choose an audio file” instead.');return}
+  msg('Asking for microphone access…');
+  try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
+  catch(e){msg('Microphone unavailable ('+(e.name||'error')+'). Allow mic access, or use “choose an audio file”.');return}
+  chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  rec.onstop=async()=>{clearInterval(tick);stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
+    await load(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer())};
+  rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done.');
+  tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=90)rec.stop()},200)}
+$('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
+$('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();await load(await f.arrayBuffer())}};
+
+function trim(d,sr,db){const thr=Math.pow(10,db/20),B=512;let a=-1,z=-1;
+  for(let i=0;i<d.length;i+=B){let m=0;for(let j=i;j<Math.min(d.length,i+B);j++)m=Math.max(m,Math.abs(d[j]));if(m>thr){if(a<0)a=i;z=i+B}}
+  if(a<0)return d;const pad=Math.floor(sr*.05);return d.slice(Math.max(0,a-pad),Math.min(d.length,z+pad))}
+
+function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.length);
+  for(let s=-H;s<d.length;s+=H){for(let i=0;i<W;i++){const oi=s+i;if(oi<0||oi>=d.length)continue;
+    const p=s+i*r,i0=Math.floor(p);if(i0<0||i0+1>=d.length)continue;const f=p-i0;
+    const w=.5-.5*Math.cos(2*Math.PI*i/W);o[oi]+=w*(d[i0]*(1-f)+d[i0+1]*f)}}
+  return o}
+
+function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
+  for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
+
+async function render(){let d=raw.data;const sr=raw.sr;
+  if($('trim').checked)d=trim(d,sr,+$('thr').value);
+  if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
+    for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
+  if($('rep').checked){const n=+$('reps').value,gap=Math.floor(sr*.2),L=d.length+gap,y=new Float32Array(L*n-gap);
+    for(let k=0;k<n;k++)y.set(d,k*L);d=y}
+  const echo=$('echo').checked,rev=$('rev').checked,dl=+$('edelay').value/1000,fb=+$('efb').value/100,rs=+$('room').value;
+  const tail=(echo?dl*7:0)+(rev?rs:0)+.1,oc=new OfflineAudioContext(1,Math.ceil(d.length+tail*sr),sr);
+  const buf=oc.createBuffer(1,d.length,sr);buf.copyToChannel(d,0);
+  const src=oc.createBufferSource();src.buffer=buf;let node=src;
+  if(echo){const mix=oc.createGain(),del=oc.createDelay(2),g=oc.createGain(),w=oc.createGain();
+    del.delayTime.value=dl;g.gain.value=fb;w.gain.value=.65;
+    src.connect(mix);src.connect(del);del.connect(g);g.connect(del);del.connect(w);w.connect(mix);node=mix}
+  const og=oc.createGain();node.connect(og);
+  if(rev){const cv=oc.createConvolver(),w=oc.createGain();cv.buffer=ir(oc,rs,sr);w.gain.value=.55;node.connect(cv);cv.connect(w);w.connect(og)}
+  og.connect(oc.destination);src.start();
+  const y=(await oc.startRendering()).getChannelData(0).slice();let pk=0;
+  for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));if(pk>0)for(let i=0;i<y.length;i++)y[i]*=.9/pk;
+  return{data:y,sr}}
+
+function wav(y,sr){const b=new ArrayBuffer(44+y.length*2),v=new DataView(b),s=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+  s(0,'RIFF');v.setUint32(4,36+y.length*2,true);s(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);s(36,'data');v.setUint32(40,y.length*2,true);
+  for(let i=0;i<y.length;i++)v.setInt16(44+i*2,Math.max(-1,Math.min(1,y[i]))*32767,true);return new Blob([b],{type:'audio/wav'})}
+function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
+  try{const enc=new lamejs.Mp3Encoder(1,sr,128),p=new Int16Array(y.length),parts=[];
+    for(let i=0;i<y.length;i++)p[i]=Math.max(-1,Math.min(1,y[i]))*32767;
+    for(let i=0;i<p.length;i+=1152){const c=enc.encodeBuffer(p.subarray(i,i+1152));if(c.length)parts.push(c)}
+    const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
+
+function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true}
+$('prev').onclick=async()=>{stopPlay();$('prev').disabled=true;msg('Applying effects…');
+  try{out=await render();draw(out.data);blob=mp3(out.data,out.sr);
+    const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
+    const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
+    const s=AC().createBufferSource();s.buffer=b;s.connect(AC().destination);s.onended=()=>{if(playing===s)stopPlay()};s.start();playing=s;
+    dirty=false;$('stop').disabled=false;$('share').disabled=false;
+    msg(blob.type==='audio/mpeg'?'Playing. Happy with it? Tap Share MP3.':'Playing. (MP3 encoder didn’t load, so this is a WAV file.)')}
+  catch(e){msg('Something went wrong applying effects. Try a shorter clip.')}
+  $('prev').disabled=false};
+$('stop').onclick=stopPlay;
+
+$('share').onclick=async()=>{if(!blob||dirty){msg('Tap Preview first so the latest effects are included.');return}
+  const f=new File([blob],'flute-clip.'+(blob.type==='audio/mpeg'?'mp3':'wav'),{type:blob.type});
+  if(navigator.canShare&&navigator.canShare({files:[f]})){
+    try{await navigator.share({files:[f],title:'My flute recording'});return}catch(e){if(e.name==='AbortError')return}}
+  msg('The share sheet isn’t available here. Use the player below: its ⋮ menu has Download.')};
+
+function touch(){dirty=true;$('share').disabled=true}
+document.querySelectorAll('.fx input,.fx select').forEach(el=>el.addEventListener('input',touch));
+addEventListener('resize',()=>draw(out?out.data:raw&&raw.data));
+addEventListener('error',e=>msg('Error: '+e.message));
+draw(null);
+</script>
+</body>
+</html>
