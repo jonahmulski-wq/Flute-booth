@@ -46,24 +46,18 @@ audio{width:100%;margin-top:10px}
 <p class="sub">Record a short clip, add effects, then share it as an MP3.</p>
 
 <div class="wave"><canvas id="cv"></canvas></div>
+<div class="fxr" id="trimbox" hidden style="border-top:0;padding-top:8px"><label class="t">Trim the recording (gray parts get cut)</label>
+    <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
+    <div class="ctl" style="display:block" id="tinfo"></div></div>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
-<div class="fx" id="drumfx"><div class="fxr"><label class="t"><input type="checkbox" id="drum"> Hoop drum (plays while you record)</label>
-    <div class="ctl"><span>Rhythm</span><select id="rhy"><option value="steady">Steady beat</option><option value="heart" selected>Heartbeat</option><option value="walk">Slow walk</option><option value="gallop">Gentle gallop</option><option value="round">Round dance</option></select>
-    <span>Tempo</span><input type="range" id="bpm" min="40" max="140" value="70">
-    <span>Volume</span><input type="range" id="dvol" min="0" max="100" value="50"></div>
-    <div class="ctl" style="display:block"><button class="btn" id="dtry" type="button">Try drum</button></div>
-    <div class="ctl" style="display:block">Tick the box, then tap Rec and the drum starts with you. Use headphones so the microphone doesn’t pick it up. To leave the drum out afterwards, untick the box or set its volume to 0, then Preview again.</div></div></div>
 <div class="row">
   <span class="time" id="tm">0:00</span>
   <button class="rec" id="rec" aria-label="Record">Rec</button>
-  <span class="time"></span>
+  <button class="btn main" id="prev2" disabled>Preview</button>
 </div>
 <div class="file"><label>or choose an audio file: <input type="file" id="file" accept="audio/*"></label></div>
 
 <div class="fx">
-  <div class="fxr" id="trimbox" hidden><label class="t">Trim the recording</label>
-    <div class="ctl"><span>Start</span><input type="range" id="ts" min="0" max="1000" value="0"><span>End</span><input type="range" id="te" min="0" max="1000" value="1000"></div>
-    <div class="ctl" style="display:block" id="tinfo"></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="trim" checked> Auto-remove silence at both ends</label>
     <div class="ctl"><span>Sensitivity</span><input type="range" id="thr" min="-55" max="-20" value="-42"></div></div>
   <div class="fxr"><label class="t"><input type="checkbox" id="lc"> Low cut (wind and rumble)</label>
@@ -99,6 +93,7 @@ audio{width:100%;margin-top:10px}
 const $=id=>document.getElementById(id);
 let ctx,raw=null,out=null,blob=null,rec=null,stream=null,chunks=[],tick=null,t0=0,playing=null,dirty=true;
 const msg=t=>$('msg').textContent=t;
+function setPrev(v){$('prev').disabled=v;$('prev2').disabled=v}
 function AC(){if(!ctx){try{ctx=new (window.AudioContext||window.webkitAudioContext)({sampleRate:44100})}catch(e){ctx=new (window.AudioContext||window.webkitAudioContext)()}}
   if(ctx.state==='suspended')ctx.resume();return ctx}
 const fmt=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
@@ -113,7 +108,7 @@ function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clien
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();$('prev').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();setPrev(false);let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
   msg(cl>20?'Got it. Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the flute helps. “Tame loud peaks” can soften it but can’t fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
@@ -123,9 +118,9 @@ async function startRec(){AC();
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
   catch(e){msg('Microphone unavailable ('+(e.name||'error')+'). Allow mic access, or use “choose an audio file”.');return}
   chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  rec.onstop=async()=>{stopDrum();clearInterval(tick);stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
+  rec.onstop=async()=>{clearInterval(tick);stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
     await load(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer())};
-  rec.start();if($('drum').checked)startDrum();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done.');
+  rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done.');
   tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=90)rec.stop()},200)}
 $('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
 $('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();await load(await f.arrayBuffer())}};
@@ -142,19 +137,6 @@ function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.le
 
 function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
-
-const RHY={steady:[1,0,1,0,1,0,1,0],heart:[1,.5,0,0,1,.5,0,0],walk:[1,0,0,0,.6,0,0,0],gallop:[1,0,.5,.5,1,0,.5,.5],round:[1,0,.5,0,.5,0,.5,0]};
-function bar(k,bpm,sr){const p=RHY[k],st=Math.floor(sr*30/bpm),M=st*8,o=new Float32Array(M),L=Math.floor(sr*.5);
-  for(let i=0;i<8;i++){const a=p[i];if(!a)continue;const s=i*st,f0=(a>.7?80:92)+Math.random()*4;let ph=0;
-    for(let j=0;j<L;j++){const t=j/sr;ph+=2*Math.PI*(f0*.7+f0*.5*Math.exp(-t*30))/sr;
-      o[(s+j)%M]+=a*(Math.sin(ph)*Math.exp(-t*10)+(Math.random()*2-1)*.25*Math.exp(-t*90))}}
-  return o}
-let dsrc=null;
-function startDrum(){stopDrum();const c=AC(),a=bar($('rhy').value,+$('bpm').value,c.sampleRate),b=c.createBuffer(1,a.length,c.sampleRate);b.copyToChannel(a,0);
-  const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=true;g.gain.value=+$('dvol').value/100*.6;s.connect(g);g.connect(c.destination);s.start();dsrc=s;$('dtry').textContent='Stop drum'}
-function stopDrum(){if(dsrc){try{dsrc.stop()}catch(e){}dsrc=null}$('dtry').textContent='Try drum'}
-$('dtry').onclick=()=>dsrc?stopDrum():startDrum();
-['rhy','bpm','dvol'].forEach(id=>$(id).addEventListener('change',()=>{if(dsrc)startDrum()}));
 
 async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;
   if($('trim').checked){const t=trim(d,sr,+$('thr').value);d=t.d;off+=t.off}
@@ -177,9 +159,6 @@ async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/10
   if($('comp').checked){const am=+$('camt').value/100,cp=oc.createDynamicsCompressor();cp.threshold.value=-10-am*30;cp.ratio.value=4+am*14;cp.attack.value=.003;cp.release.value=.15;cp.knee.value=10;og.connect(cp);last=cp}
   last.connect(oc.destination);
   const N=oc.length;
-  if($('drum').checked&&+$('dvol').value>0){const a=bar($('rhy').value,+$('bpm').value,sr),b=oc.createBuffer(1,a.length,sr),g0=+$('dvol').value/100*.6;b.copyToChannel(a,0);
-    const s=oc.createBufferSource(),gn=oc.createGain();s.buffer=b;s.loop=true;gn.gain.setValueAtTime(g0,0);gn.gain.setValueAtTime(g0,Math.max(0,N/sr-.8));gn.gain.linearRampToValueAtTime(0,N/sr);
-    s.connect(gn);gn.connect(oc.destination);s.start(0,(off/sr)%(a.length/sr))}
   src.start();
   const y=(await oc.startRendering()).getChannelData(0).slice();let pk=0;
   for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));if(pk>0)for(let i=0;i<y.length;i++)y[i]*=.7/pk;
@@ -198,7 +177,7 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
 function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true}
-$('prev').onclick=async()=>{stopDrum();stopPlay();$('prev').disabled=true;msg('Applying effects…');
+$('prev').onclick=async()=>{stopPlay();setPrev(true);msg('Applying effects…');
   try{out=await render();draw(out.data);blob=mp3(out.data,out.sr);
     const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
     const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
@@ -206,7 +185,8 @@ $('prev').onclick=async()=>{stopDrum();stopPlay();$('prev').disabled=true;msg('A
     dirty=false;$('stop').disabled=false;$('share').disabled=false;
     msg(blob.type==='audio/mpeg'?'Playing. Happy with it? Tap Share MP3.':'Playing. (MP3 encoder didn’t load, so this is a WAV file.)')}
   catch(e){msg('Something went wrong applying effects. Try a shorter clip.')}
-  $('prev').disabled=false};
+  setPrev(false)};
+$('prev2').onclick=()=>$('prev').click();
 $('stop').onclick=stopPlay;
 
 $('share').onclick=async()=>{if(!blob||dirty){msg('Tap Preview first so the latest effects are included.');return}
