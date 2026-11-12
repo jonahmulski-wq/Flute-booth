@@ -47,6 +47,12 @@ audio{width:100%;margin-top:10px}
 
 <div class="wave"><canvas id="cv"></canvas></div>
 <div class="msg" id="msg" role="status">Page loaded. Tap Rec to start.</div>
+<div class="fx" id="drumfx"><div class="fxr"><label class="t"><input type="checkbox" id="drum"> Hoop drum (plays while you record)</label>
+    <div class="ctl"><span>Rhythm</span><select id="rhy"><option value="steady">Steady beat</option><option value="heart" selected>Heartbeat</option><option value="walk">Slow walk</option><option value="gallop">Gentle gallop</option><option value="round">Round dance</option></select>
+    <span>Tempo</span><input type="range" id="bpm" min="40" max="140" value="70">
+    <span>Volume</span><input type="range" id="dvol" min="0" max="100" value="50"></div>
+    <div class="ctl" style="display:block"><button class="btn" id="dtry" type="button">Try drum</button></div>
+    <div class="ctl" style="display:block">Tick the box, then tap Rec and the drum starts with you. Use headphones so the microphone doesn’t pick it up. To leave the drum out afterwards, untick the box or set its volume to 0, then Preview again.</div></div></div>
 <div class="row">
   <span class="time" id="tm">0:00</span>
   <button class="rec" id="rec" aria-label="Record">Rec</button>
@@ -74,19 +80,9 @@ audio{width:100%;margin-top:10px}
   <div class="fxr"><label class="t"><input type="checkbox" id="octon"> Octave layer</label>
     <div class="ctl"><span>Layer</span><select id="oct"><option value="down">One octave lower</option><option value="up">One octave higher</option></select>
     <span>Mix</span><input type="range" id="octmix" min="10" max="100" value="55"></div></div>
-  <div class="fxr"><label class="t"><input type="checkbox" id="comp"> Compressor (tame loud peaks)</label>
-    <div class="ctl"><span>Threshold</span><input type="range" id="cth" min="-60" max="0" value="-24">
-    <span>Ratio</span><input type="range" id="crat" min="1" max="20" step="0.5" value="4">
-    <span>Attack</span><input type="range" id="catk" min="1" max="200" value="10">
-    <span>Release</span><input type="range" id="crel" min="20" max="1000" value="250"></div>
-    <div class="ctl" style="display:block">Lower threshold and higher ratio = stronger compression.</div></div>
-  <div class="fxr"><label class="t"><input type="checkbox" id="drum"> Hoop drum</label>
-    <div class="ctl"><span>Rhythm</span><select id="rhy"><option value="steady">Steady beat</option><option value="heart" selected>Heartbeat</option><option value="walk">Slow walk</option><option value="gallop">Gentle gallop</option><option value="round">Round dance</option></select>
-    <span>Tempo</span><input type="range" id="bpm" min="40" max="140" value="70">
-    <span>Volume</span><input type="range" id="dvol" min="0" max="100" value="50"></div></div>
-  <div class="fxr"><label class="t"><input type="checkbox" id="nat"> Nature sound</label>
-    <div class="ctl"><span>Sound</span><select id="nsnd"><option value="creek">Creek</option><option value="waves">Ocean waves</option><option value="rain">Rain</option><option value="birds">Songbirds</option></select>
-    <span>Volume</span><input type="range" id="nvol" min="0" max="100" value="40"></div></div>
+  <div class="fxr"><label class="t"><input type="checkbox" id="comp"> Tame loud peaks</label>
+    <div class="ctl"><span>Amount</span><input type="range" id="camt" min="0" max="100" value="50"></div>
+    <div class="ctl" style="display:block">Smooths out sudden loud notes so they don’t sound harsh.</div></div>
   <div class="fxr"><label class="t" id="vollab">Volume: 0 dB</label>
     <div class="ctl"><span>Level</span><input type="range" id="vol" min="-12" max="12" step="1" value="0"></div></div>
 </div>
@@ -117,7 +113,8 @@ function draw(d){const c=$('cv'),k=devicePixelRatio||1,w=c.clientWidth,h=c.clien
 
 async function load(ab){try{const b=await AC().decodeAudioData(ab);const n=b.length,d=new Float32Array(n);
   for(let c=0;c<b.numberOfChannels;c++){const ch=b.getChannelData(c);for(let i=0;i<n;i++)d[i]+=ch[i]/b.numberOfChannels}
-  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();$('prev').disabled=false;msg('Got it. Trim the ends if you want, choose effects, then tap Preview.')}
+  raw={data:d,sr:b.sampleRate};$('ts').value=0;$('te').value=1000;$('trimbox').hidden=false;updTrim();$('prev').disabled=false;let cl=0;for(let i=0;i<n;i++)if(Math.abs(d[i])>.95)cl++;
+  msg(cl>20?'Got it. Heads up: this recording distorted in a few places because it was too loud for the microphone. Holding the phone farther from the flute helps. “Tame loud peaks” can soften it but can’t fully repair it.':'Got it. Trim the ends if you want, choose effects, then tap Preview.')}
   catch(e){msg('That audio couldn’t be read ('+(e.message||e.name||'unknown error')+'). Try another file.')}}
 
 async function startRec(){AC();
@@ -126,16 +123,16 @@ async function startRec(){AC();
   try{stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}
   catch(e){msg('Microphone unavailable ('+(e.name||'error')+'). Allow mic access, or use “choose an audio file”.');return}
   chunks=[];rec=new MediaRecorder(stream);rec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
-  rec.onstop=async()=>{clearInterval(tick);stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
+  rec.onstop=async()=>{stopDrum();clearInterval(tick);stream.getTracks().forEach(t=>t.stop());$('rec').classList.remove('on');$('rec').textContent='Rec';
     await load(await new Blob(chunks,{type:rec.mimeType}).arrayBuffer())};
-  rec.start();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done.');
+  rec.start();if($('drum').checked)startDrum();t0=Date.now();$('rec').classList.add('on');$('rec').textContent='Stop';msg('Recording… tap Stop when done.');
   tick=setInterval(()=>{const s=(Date.now()-t0)/1000;$('tm').textContent=fmt(s);if(s>=90)rec.stop()},200)}
 $('rec').onclick=()=>{stopPlay();rec&&rec.state==='recording'?rec.stop():startRec()};
 $('file').onchange=async e=>{const f=e.target.files[0];if(f){msg('Reading '+f.name+'…');AC();await load(await f.arrayBuffer())}};
 
 function trim(d,sr,db){const thr=Math.pow(10,db/20),B=512;let a=-1,z=-1;
   for(let i=0;i<d.length;i+=B){let m=0;for(let j=i;j<Math.min(d.length,i+B);j++)m=Math.max(m,Math.abs(d[j]));if(m>thr){if(a<0)a=i;z=i+B}}
-  if(a<0)return d;const pad=Math.floor(sr*.05);return d.slice(Math.max(0,a-pad),Math.min(d.length,z+pad))}
+  if(a<0)return{d,off:0};const pad=Math.floor(sr*.05),s=Math.max(0,a-pad);return{d:d.slice(s,Math.min(d.length,z+pad)),off:s}}
 
 function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.length);
   for(let s=-H;s<d.length;s+=H){for(let i=0;i<W;i++){const oi=s+i;if(oi<0||oi>=d.length)continue;
@@ -146,27 +143,21 @@ function pitch(d,r,sr){const W=Math.floor(sr*.09),H=W>>1,o=new Float32Array(d.le
 function ir(c,secs,sr){const n=Math.floor(secs*sr),b=c.createBuffer(1,n,sr),x=b.getChannelData(0);
   for(let i=0;i<n;i++)x[i]=(Math.random()*2-1)*Math.pow(1-i/n,3);return b}
 
-function bed(oc,a,g){const b=oc.createBuffer(1,a.length,oc.sampleRate);b.copyToChannel(a,0);const s=oc.createBufferSource(),gn=oc.createGain();s.buffer=b;gn.gain.value=g*.6;s.connect(gn);gn.connect(oc.destination);s.start()}
-function fade(a,sr){const fi=Math.floor(sr*.3),fo=Math.floor(sr*.8);for(let i=0;i<a.length;i++){let g=1;if(i<fi)g=i/fi;const r=a.length-i;if(r<fo)g=Math.min(g,r/fo);a[i]*=g}return a}
 const RHY={steady:[1,0,1,0,1,0,1,0],heart:[1,.5,0,0,1,.5,0,0],walk:[1,0,0,0,.6,0,0,0],gallop:[1,0,.5,.5,1,0,.5,.5],round:[1,0,.5,0,.5,0,.5,0]};
-function drum(k,bpm,N,sr){const o=new Float32Array(N),p=RHY[k],st=Math.floor(sr*30/bpm),L=Math.floor(sr*.5);
-  for(let s=0,i=0;s<N;s+=st,i++){const a=p[i%8];if(!a)continue;const f0=(a>.7?80:92)+Math.random()*4;let ph=0;
-    for(let j=0;j<L&&s+j<N;j++){const t=j/sr;ph+=2*Math.PI*(f0*.7+f0*.5*Math.exp(-t*30))/sr;
-      o[s+j]+=a*(Math.sin(ph)*Math.exp(-t*10)+(Math.random()*2-1)*.25*Math.exp(-t*90))}}
-  return fade(o,sr)}
-function nature(k,N,sr){const o=new Float32Array(N),R=()=>Math.random()*2-1;let a=0,b=0,pk=0;
-  if(k==='rain'){for(let i=0;i<N;i++){const r=R();a+=(r-a)*.3;o[i]=(r-a)*.5}
-    for(let n=0;n<N/sr*40;n++){const s=Math.floor(Math.random()*N),f=2500+Math.random()*3000,g=.3+Math.random()*.5;for(let j=0;j<300&&s+j<N;j++)o[s+j]+=g*Math.sin(j/sr*f*6.283)*Math.exp(-j/60)*.5}}
-  else if(k==='waves'){const per=sr*(7+Math.random()*2),ph=Math.random()*6.28;for(let i=0;i<N;i++){const r=R();a+=(r-a)*.04;b+=(r-b)*.3;const e=Math.pow(.5+.5*Math.sin(6.283*i/per+ph),2);o[i]=a*6*(.25+e)+(r-b)*.5*e}}
-  else if(k==='creek'){let m=0;for(let i=0;i<N;i++){const r=R();a+=(r-a)*.3;b+=(r-b)*.03;m+=(R()-m)*.002;o[i]=(a-b)*Math.max(.3,1.2+m*40)*.6}
-    for(let n=0;n<N/sr*18;n++){const s=Math.floor(Math.random()*N),f=500+Math.random()*900,g=.2+Math.random()*.4,d=Math.floor(sr*.03);for(let j=0;j<d&&s+j<N;j++){const t=j/d;o[s+j]+=g*Math.sin(6.283*(f*(1+t*1.5))*j/sr)*Math.sin(Math.PI*t)}}}
-  else{for(let t=sr*.5;t<N;t+=sr*(1+Math.random()*2.5)){const notes=2+Math.floor(Math.random()*4),f0=2200+Math.random()*2000;let s=Math.floor(t);
-    for(let q=0;q<notes;q++){const d=Math.floor(sr*(.06+Math.random()*.08)),up=Math.random()<.5?1:-1,f1=f0*(1+Math.random()*.4*up),amp=.3+Math.random()*.2;
-      for(let j=0;j<d&&s+j<N;j++){const x=j/d;o[s+j]+=amp*Math.sin(6.283*(f0+(f1-f0)*x+30*Math.sin(x*40))*(j/sr))*Math.sin(Math.PI*x)}s+=d+Math.floor(sr*.04)}}}
-  for(let i=0;i<N;i++)pk=Math.max(pk,Math.abs(o[i]));if(pk>0)for(let i=0;i<N;i++)o[i]*=.8/pk;return fade(o,sr)}
+function bar(k,bpm,sr){const p=RHY[k],st=Math.floor(sr*30/bpm),M=st*8,o=new Float32Array(M),L=Math.floor(sr*.5);
+  for(let i=0;i<8;i++){const a=p[i];if(!a)continue;const s=i*st,f0=(a>.7?80:92)+Math.random()*4;let ph=0;
+    for(let j=0;j<L;j++){const t=j/sr;ph+=2*Math.PI*(f0*.7+f0*.5*Math.exp(-t*30))/sr;
+      o[(s+j)%M]+=a*(Math.sin(ph)*Math.exp(-t*10)+(Math.random()*2-1)*.25*Math.exp(-t*90))}}
+  return o}
+let dsrc=null;
+function startDrum(){stopDrum();const c=AC(),a=bar($('rhy').value,+$('bpm').value,c.sampleRate),b=c.createBuffer(1,a.length,c.sampleRate);b.copyToChannel(a,0);
+  const s=c.createBufferSource(),g=c.createGain();s.buffer=b;s.loop=true;g.gain.value=+$('dvol').value/100*.6;s.connect(g);g.connect(c.destination);s.start();dsrc=s;$('dtry').textContent='Stop drum'}
+function stopDrum(){if(dsrc){try{dsrc.stop()}catch(e){}dsrc=null}$('dtry').textContent='Try drum'}
+$('dtry').onclick=()=>dsrc?stopDrum():startDrum();
+['rhy','bpm','dvol'].forEach(id=>$(id).addEventListener('change',()=>{if(dsrc)startDrum()}));
 
-async function render(){const n=raw.data.length;let d=raw.data.slice(Math.floor(n*$('ts').value/1000),Math.floor(n*$('te').value/1000));const sr=raw.sr;
-  if($('trim').checked)d=trim(d,sr,+$('thr').value);
+async function render(){const n=raw.data.length,s0=Math.floor(n*$('ts').value/1000);let d=raw.data.slice(s0,Math.floor(n*$('te').value/1000)),off=s0;const sr=raw.sr;
+  if($('trim').checked){const t=trim(d,sr,+$('thr').value);d=t.d;off+=t.off}
   if($('octon').checked){const sh=pitch(d,$('oct').value==='up'?2:.5,sr),m=+$('octmix').value/100,y=new Float32Array(d.length);
     for(let i=0;i<d.length;i++)y[i]=d[i]*(1-.35*m)+sh[i]*m;d=y}
   if($('rep').checked){const n=+$('reps').value,gap=Math.floor(sr*.2),L=d.length+gap,y=new Float32Array(L*n-gap);
@@ -183,11 +174,12 @@ async function render(){const n=raw.data.length;let d=raw.data.slice(Math.floor(
   const og=oc.createGain();node.connect(og);
   if(rev){const cv=oc.createConvolver(),w=oc.createGain();cv.buffer=ir(oc,rs,sr);w.gain.value=+$('revmix').value/100*1.2;node.connect(cv);cv.connect(w);w.connect(og)}
   let last=og;
-  if($('comp').checked){const cp=oc.createDynamicsCompressor();cp.threshold.value=+$('cth').value;cp.ratio.value=+$('crat').value;cp.attack.value=+$('catk').value/1000;cp.release.value=+$('crel').value/1000;cp.knee.value=12;og.connect(cp);last=cp}
+  if($('comp').checked){const am=+$('camt').value/100,cp=oc.createDynamicsCompressor();cp.threshold.value=-10-am*30;cp.ratio.value=4+am*14;cp.attack.value=.003;cp.release.value=.15;cp.knee.value=10;og.connect(cp);last=cp}
   last.connect(oc.destination);
   const N=oc.length;
-  if($('drum').checked)bed(oc,drum($('rhy').value,+$('bpm').value,N,sr),+$('dvol').value/100);
-  if($('nat').checked)bed(oc,nature($('nsnd').value,N,sr),+$('nvol').value/100);
+  if($('drum').checked&&+$('dvol').value>0){const a=bar($('rhy').value,+$('bpm').value,sr),b=oc.createBuffer(1,a.length,sr),g0=+$('dvol').value/100*.6;b.copyToChannel(a,0);
+    const s=oc.createBufferSource(),gn=oc.createGain();s.buffer=b;s.loop=true;gn.gain.setValueAtTime(g0,0);gn.gain.setValueAtTime(g0,Math.max(0,N/sr-.8));gn.gain.linearRampToValueAtTime(0,N/sr);
+    s.connect(gn);gn.connect(oc.destination);s.start(0,(off/sr)%(a.length/sr))}
   src.start();
   const y=(await oc.startRendering()).getChannelData(0).slice();let pk=0;
   for(let i=0;i<y.length;i++)pk=Math.max(pk,Math.abs(y[i]));if(pk>0)for(let i=0;i<y.length;i++)y[i]*=.7/pk;
@@ -206,7 +198,7 @@ function mp3(y,sr){if(!window.lamejs)return wav(y,sr);
     const e=enc.flush();if(e.length)parts.push(e);return new Blob(parts,{type:'audio/mpeg'})}catch(e){return wav(y,sr)}}
 
 function stopPlay(){if(playing){try{playing.stop()}catch(e){}playing=null}$('stop').disabled=true}
-$('prev').onclick=async()=>{stopPlay();$('prev').disabled=true;msg('Applying effects…');
+$('prev').onclick=async()=>{stopDrum();stopPlay();$('prev').disabled=true;msg('Applying effects…');
   try{out=await render();draw(out.data);blob=mp3(out.data,out.sr);
     const old=$('player').src;$('player').src=URL.createObjectURL(blob);$('player').hidden=false;if(old)URL.revokeObjectURL(old);
     const b=AC().createBuffer(1,out.data.length,out.sr);b.copyToChannel(out.data,0);
